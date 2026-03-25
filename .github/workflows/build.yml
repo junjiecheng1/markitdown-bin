@@ -70,23 +70,21 @@ jobs:
             ./dist/markitdown --version
           fi
 
-      - name: Rename for platform
+      - name: Package as tar.gz
         run: |
           cd dist
           if [ "$RUNNER_OS" == "Windows" ]; then
-            mv markitdown.exe markitdown-${{ matrix.platform }}.exe
+            tar -czf markitdown-${{ matrix.platform }}.tar.gz markitdown.exe
           else
-            mv markitdown markitdown-${{ matrix.platform }}
+            tar -czf markitdown-${{ matrix.platform }}.tar.gz markitdown
           fi
-          ls -lh
+          ls -lh *.tar.gz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: markitdown-${{ matrix.platform }}
-          path: |
-            dist/markitdown-${{ matrix.platform }}
-            dist/markitdown-${{ matrix.platform }}.exe
+          path: dist/markitdown-${{ matrix.platform }}.tar.gz
 
   release:
     needs: build
@@ -106,6 +104,5 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/markitdown-*
+          files: artifacts/*.tar.gz
           generate_release_notes: true
