@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+env:
+  OSS_BUCKET: crafto
+  OSS_ENDPOINT: oss-cn-beijing.aliyuncs.com
+  OSS_PREFIX: tools/tabpilot-tools
+
 jobs:
   build:
     strategy:
@@ -49,10 +54,10 @@ jobs:
           pip install pyinstaller
           pip install "./packages/markitdown[docx,xlsx,pptx,pdf]"
 
-      - name: Build (onefile)
+      - name: Build (onedir)
         run: |
           pyinstaller \
-            --onefile \
+            --onedir \
             --name markitdown \
             --clean \
             --noconfirm \
@@ -65,20 +70,30 @@ jobs:
       - name: Test binary
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
-            ./dist/markitdown.exe --version
+            ./dist/markitdown/markitdown.exe --version
           else
-            ./dist/markitdown --version
+            ./dist/markitdown/markitdown --version
           fi
 
       - name: Package as tar.gz
         run: |
           cd dist
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            tar -czf markitdown-${{ matrix.platform }}.tar.gz markitdown.exe
-          else
-            tar -czf markitdown-${{ matrix.platform }}.tar.gz markitdown
-          fi
+          # -h: follow symlinks (macOS PyInstaller 用符号链接)
+          tar -chzf markitdown-${{ matrix.platform }}.tar.gz markitdown/
           ls -lh *.tar.gz
+
+      - name: Upload to OSS
+        run: |
+          pip install -q oss2
+          python3 -c "
+          import oss2, os
+          auth = oss2.Auth('${{ secrets.OSS_ACCESS_KEY_ID }}', '${{ secrets.OSS_ACCESS_KEY_SECRET }}')
+          bucket = oss2.Bucket(auth, 'https://${{ env.OSS_ENDPOINT }}', '${{ env.OSS_BUCKET }}')
+          local = 'dist/markitdown-${{ matrix.platform }}.tar.gz'
+          oss_key = '${{ env.OSS_PREFIX }}/${{ matrix.platform }}/markitdown.tar.gz'
+          bucket.put_object_from_file(oss_key, local)
+          print(f'✅ {oss_key} uploaded')
+          "
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
