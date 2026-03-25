@@ -83,6 +83,8 @@ jobs:
           ls -lh *.tar.gz
 
       - name: Upload to OSS
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
           pip install -q oss2
           python3 -c "
@@ -92,7 +94,7 @@ jobs:
           local = 'dist/markitdown-${{ matrix.platform }}.tar.gz'
           oss_key = '${{ env.OSS_PREFIX }}/${{ matrix.platform }}/markitdown.tar.gz'
           bucket.put_object_from_file(oss_key, local)
-          print(f'✅ {oss_key} uploaded')
+          print(f'OK: {oss_key} uploaded')
           "
 
       - name: Upload artifact
