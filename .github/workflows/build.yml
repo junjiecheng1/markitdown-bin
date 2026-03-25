@@ -17,19 +17,18 @@ jobs:
           - os: macos-14          # Apple Silicon runner
             platform: darwin-arm64
             python: "3.11"
-          - os: macos-13          # Intel runner
+          - os: macos-15          # Intel runner (macos-13 已废弃)
             platform: darwin-x64
             python: "3.11"
           - os: ubuntu-latest     # Linux x64
             platform: linux-x64
             python: "3.11"
-          # linux-arm64 需要 QEMU 或自托管 runner，暂不支持
 
     runs-on: ${{ matrix.os }}
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -90,3 +89,4 @@ jobs:
         with:
           files: artifacts/*.tar.gz
           generate_release_notes: true
+
