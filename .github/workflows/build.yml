@@ -49,10 +49,10 @@ jobs:
           pip install pyinstaller
           pip install "./packages/markitdown[docx,xlsx,pptx,pdf]"
 
-      - name: Build (onedir)
+      - name: Build (onefile)
         run: |
           pyinstaller \
-            --onedir \
+            --onefile \
             --name markitdown \
             --clean \
             --noconfirm \
@@ -65,22 +65,28 @@ jobs:
       - name: Test binary
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
-            ./dist/markitdown/markitdown.exe --version
+            ./dist/markitdown.exe --version
           else
-            ./dist/markitdown/markitdown --version
+            ./dist/markitdown --version
           fi
 
-      - name: Package as tar.gz
+      - name: Rename for platform
         run: |
           cd dist
-          tar -czf markitdown-${{ matrix.platform }}.tar.gz markitdown/
-          ls -lh markitdown-${{ matrix.platform }}.tar.gz
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            mv markitdown.exe markitdown-${{ matrix.platform }}.exe
+          else
+            mv markitdown markitdown-${{ matrix.platform }}
+          fi
+          ls -lh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: markitdown-${{ matrix.platform }}
-          path: dist/markitdown-${{ matrix.platform }}.tar.gz
+          path: |
+            dist/markitdown-${{ matrix.platform }}
+            dist/markitdown-${{ matrix.platform }}.exe
 
   release:
     needs: build
@@ -100,5 +106,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.tar.gz
+          files: |
+            artifacts/markitdown-*
           generate_release_notes: true
