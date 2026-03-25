@@ -49,13 +49,6 @@ jobs:
           pip install pyinstaller
           pip install "./packages/markitdown[docx,xlsx,pptx,pdf]"
 
-      - name: Find markitdown entry
-        id: find
-        run: |
-          ENTRY=$(python -c "import os, markitdown; print(os.path.join(os.path.dirname(markitdown.__file__), '__main__.py'))")
-          echo "entry=$ENTRY" >> $GITHUB_OUTPUT
-          echo "Found entry: $ENTRY"
-
       - name: Build (onedir)
         run: |
           pyinstaller \
@@ -67,7 +60,7 @@ jobs:
             --exclude-module onnxruntime \
             --exclude-module tensorflow \
             --exclude-module torch \
-            "${{ steps.find.outputs.entry }}"
+            entry.py
 
       - name: Test binary
         run: |
