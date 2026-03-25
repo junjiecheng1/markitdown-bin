@@ -23,6 +23,9 @@ jobs:
           - os: ubuntu-latest
             platform: linux-x64
             python: "3.11"
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            python: "3.11"
           - os: windows-latest
             platform: win-x64
             python: "3.11"
