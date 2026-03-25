@@ -49,14 +49,12 @@ jobs:
           pip install pyinstaller
           pip install "./packages/markitdown[docx,xlsx,pptx,pdf]"
 
-      - name: Find markitdown path
+      - name: Find markitdown entry
         id: find
         run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            echo "entry=$(python -c 'import shutil; print(shutil.which(\"markitdown\"))')" >> $GITHUB_OUTPUT
-          else
-            echo "entry=$(which markitdown)" >> $GITHUB_OUTPUT
-          fi
+          ENTRY=$(python -c "import os, markitdown; print(os.path.join(os.path.dirname(markitdown.__file__), '__main__.py'))")
+          echo "entry=$ENTRY" >> $GITHUB_OUTPUT
+          echo "Found entry: $ENTRY"
 
       - name: Build (onedir)
         run: |
