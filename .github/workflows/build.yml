@@ -3,35 +3,41 @@ name: Build markitdown binaries
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   OSS_BUCKET: crafto
   OSS_ENDPOINT: oss-cn-beijing.aliyuncs.com
+  OSS_CDN_DOMAIN: lingostatic.tweet.net.cn
   OSS_PREFIX: tools/tabpilot-tools
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-14
             platform: darwin-arm64
             python: "3.11"
-          - os: macos-15
+          - os: macos-15-intel
             platform: darwin-x64
-            python: "3.11"
-          - os: ubuntu-latest
-            platform: linux-x64
             python: "3.11"
           - os: ubuntu-24.04-arm
             platform: linux-arm64
             python: "3.11"
-          - os: windows-latest
+          - os: ubuntu-22.04
+            platform: linux-x64
+            python: "3.11"
+          - os: windows-11-arm
+            platform: win-arm64
+            python: "3.11"
+          - os: windows-2022
             platform: win-x64
             python: "3.11"
 
@@ -42,17 +48,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller
-          pip install "./packages/markitdown[docx,xlsx,pptx,pdf]"
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+          python -m pip install "./packages/markitdown[docx,xlsx,pptx,pdf]"
 
       - name: Build (onedir)
         run: |
@@ -69,7 +76,7 @@ jobs:
 
       - name: Test binary
         run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
+          if [ "$RUNNER_OS" = "Windows" ]; then
             ./dist/markitdown/markitdown.exe --version
           else
             ./dist/markitdown/markitdown --version
@@ -78,48 +85,81 @@ jobs:
       - name: Package as tar.gz
         run: |
           cd dist
-          # -h: follow symlinks (macOS PyInstaller 用符号链接)
           tar -chzf markitdown-${{ matrix.platform }}.tar.gz markitdown/
           ls -lh *.tar.gz
-
-      - name: Upload to OSS
-        env:
-          PYTHONIOENCODING: utf-8
-        run: |
-          pip install -q oss2
-          python3 -c "
-          import oss2, os
-          auth = oss2.Auth('${{ secrets.OSS_ACCESS_KEY_ID }}', '${{ secrets.OSS_ACCESS_KEY_SECRET }}')
-          bucket = oss2.Bucket(auth, 'https://${{ env.OSS_ENDPOINT }}', '${{ env.OSS_BUCKET }}')
-          local = 'dist/markitdown-${{ matrix.platform }}.tar.gz'
-          oss_key = '${{ env.OSS_PREFIX }}/${{ matrix.platform }}/markitdown.tar.gz'
-          bucket.put_object_from_file(oss_key, local)
-          print(f'OK: {oss_key} uploaded')
-          "
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: markitdown-${{ matrix.platform }}
           path: dist/markitdown-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
 
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts/
-          merge-multiple: true
+          path: artifacts
 
-      - name: List artifacts
-        run: ls -lhR artifacts/
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -name '*.tar.gz' -exec cp {} release/ \;
+          ls -lh release
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.tar.gz
+          files: release/*.tar.gz
           generate_release_notes: true
+
+      - name: Install OSS SDK
+        run: python -m pip install --upgrade oss2
+
+      - name: Upload to OSS
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          python <<'PY'
+          import os
+          from pathlib import Path
+          import oss2
+
+          ak = os.environ.get("OSS_ACCESS_KEY_ID")
+          sk = os.environ.get("OSS_ACCESS_KEY_SECRET")
+          if not ak or not sk:
+              print("Skipping OSS upload, credentials missing.")
+              raise SystemExit(0)
+
+          bucket_name = os.environ["OSS_BUCKET"]
+          endpoint = os.environ["OSS_ENDPOINT"]
+          cdn = os.environ["OSS_CDN_DOMAIN"]
+          prefix = os.environ["OSS_PREFIX"].strip("/")
+          version = os.environ["VERSION"]
+
+          auth = oss2.Auth(ak, sk)
+          bucket = oss2.Bucket(auth, f"https://{endpoint}", bucket_name)
+
+          for path in sorted(Path("release").glob("markitdown-*.tar.gz")):
+              stem = path.name[:-7]
+              platform = stem.removeprefix("markitdown-")
+              latest_key = f"{prefix}/{platform}/markitdown.tar.gz"
+              history_key = f"{prefix}/history/{version}/{platform}/markitdown.tar.gz"
+              version_key = f"{prefix}/{platform}/markitdown-version.txt"
+
+              bucket.put_object_from_file(latest_key, str(path))
+              bucket.put_object_from_file(history_key, str(path))
+              bucket.put_object(version_key, version)
+              print(f"OK https://{cdn}/{latest_key}")
+              print(f"OK https://{cdn}/{history_key}")
+              print(f"OK https://{cdn}/{version_key}")
+          PY
